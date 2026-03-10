@@ -247,14 +247,3 @@ Este demo puede evolucionar hacia:
 # Licencia
 
 MIT License
-
----
-
-Si quieres, también puedo darte una versión **README estilo startup / open source (mucho más atractivo visualmente)** con:
-
-* diagramas mermaid
-* badges
-* sección de arquitectura IA
-* ejemplo de API endpoint
-
-Queda **mucho más pro para GitHub**.
