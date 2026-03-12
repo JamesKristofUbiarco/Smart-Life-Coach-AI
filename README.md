@@ -1,10 +1,3 @@
-Aquí tienes un **README actualizado para tu nueva versión con LangGraph + Router + Agentes + Google AI Studio (Gemini)**.
-Está pensado para **explicar el cambio respecto a la versión anterior** y dejar claro el nuevo diseño de agentes.
-
-Puedes copiarlo directo a `README.md`.
-
----
-
 # Smart-Life-Coach-AI (LangGraph + Gemini Multi-Agent)
 
 Prototipo del componente de **Inteligencia Artificial** para el proyecto **Smart Life Coach**.
