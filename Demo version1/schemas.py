@@ -1,5 +1,6 @@
+# schemas.py
 from pydantic import BaseModel, Field
-from typing import Literal, List, Optional
+from typing import List
 
 
 class Goal(BaseModel):
@@ -29,11 +30,6 @@ class BackendRequest(BaseModel):
     user_message: str
 
 
-class RouterDecision(BaseModel):
-    route: Literal["planner", "qa", "fallback"]
-    reason: str
-
-
 class SessionItem(BaseModel):
     day: str
     task: str
@@ -55,11 +51,10 @@ class RiskItem(BaseModel):
     mitigation: str
 
 
-class CoachResponse(BaseModel):
-    response_type: Literal["plan", "answer", "fallback"]
-    plan_title: Optional[str] = None
+class CoachPlan(BaseModel):
+    plan_title: str
     summary: str
-    milestones: List[Milestone] = Field(default_factory=list)
-    weekly_schedule: List[WeekPlan] = Field(default_factory=list)
-    risks: List[RiskItem] = Field(default_factory=list)
-    next_actions: List[str] = Field(default_factory=list)
+    milestones: List[Milestone]
+    weekly_schedule: List[WeekPlan]
+    risks: List[RiskItem]
+    next_actions: List[str]

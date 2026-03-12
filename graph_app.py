@@ -1,93 +1,214 @@
-# graph_app.py
 import os
-import json
 from typing import TypedDict, Optional
 
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
-from langchain.chat_models import init_chat_model
 from langchain.messages import SystemMessage, HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-from schemas import BackendRequest, CoachPlan
+from schemas import BackendRequest, RouterDecision, CoachResponse
 
 load_dotenv()
 
 
-# -----------------------------
-# Estado compartido del grafo
-# -----------------------------
 class GraphState(TypedDict):
     backend_payload: dict
+    route: Optional[str]
+    route_reason: Optional[str]
     prompt_text: Optional[str]
     ai_result: Optional[dict]
 
 
-# -----------------------------
-# Nodo 1: preparar prompt
-# -----------------------------
-def prepare_prompt(state: GraphState) -> dict:
+def get_router_model():
+    return ChatGoogleGenerativeAI(
+        model="gemini-3-flash-preview",
+        temperature=1.0,   # Gemini 3+ recomienda 1.0 por defecto
+        max_retries=2,
+    )
+
+
+def get_planner_model():
+    return ChatGoogleGenerativeAI(
+        model="gemini-3.1-pro-preview",
+        temperature=1.0,
+        max_retries=2,
+        thinking_level="low",
+    )
+
+
+def get_qa_model():
+    return ChatGoogleGenerativeAI(
+        model="gemini-3-flash-preview",
+        temperature=1.0,
+        max_retries=2,
+    )
+
+
+def get_fallback_model():
+    return ChatGoogleGenerativeAI(
+        model="gemini-3-flash-preview",
+        temperature=1.0,
+        max_retries=2,
+    )
+
+
+def router_node(state: GraphState):
     payload = BackendRequest(**state["backend_payload"])
 
-    prompt_text = f"""
-Genera un plan personalizado para este usuario.
+    router_prompt = f"""
+Clasifica la siguiente petición en UNA de estas rutas:
+- planner: si el usuario pide un plan, estrategia, roadmap, rutina o pasos para lograr una meta
+- qa: si el usuario hace una duda puntual, seguimiento o aclaración
+- fallback: si la petición es ambigua, demasiado general o no encaja
 
-DATOS DEL USUARIO:
+Devuelve solo la estructura solicitada.
+
+PETICIÓN:
+{payload.model_dump_json(indent=2)}
+"""
+
+    model = get_router_model().with_structured_output(
+        RouterDecision.model_json_schema(),
+        method="json_schema",
+    )
+
+    result = model.invoke([
+        SystemMessage(content="Eres un router de intenciones para un asistente personal."),
+        HumanMessage(content=router_prompt),
+    ])
+
+    print(f"[Router] route={result['route']} | reason={result['reason']}")
+    return {
+        "route": result["route"],
+        "route_reason": result["reason"],
+    }
+
+
+def planner_node(state: GraphState):
+    payload = BackendRequest(**state["backend_payload"])
+
+    planner_prompt = f"""
+Genera un plan accionable, realista y seguro para este usuario.
+
+DATOS:
 {payload.model_dump_json(indent=2)}
 
 REGLAS:
 - Responde en español.
-- Sé concreto, útil y realista.
-- Devuelve estructura exacta del plan.
-- No inventes datos que no estén.
-- Si falta info crítica, usa next_actions.
+- Sé concreto.
+- Crea hitos, agenda semanal, riesgos y siguientes acciones.
+- Si falta información crítica, usa next_actions.
+- response_type = "plan"
 """
 
-    print("\n[LangGraph] Nodo prepare_prompt ejecutado.")
-    return {"prompt_text": prompt_text}
-
-
-# -----------------------------
-# Nodo 2: llamar al modelo
-# -----------------------------
-def call_gemini(state: GraphState) -> dict:
-    model = init_chat_model(
-        "google_genai:gemini-2.5-flash-lite",
-        temperature=0.3,
-        timeout=30,
-        max_retries=3,
+    model = get_planner_model().with_structured_output(
+        CoachResponse.model_json_schema(),
+        method="json_schema",
     )
 
-    structured_model = model.with_structured_output(CoachPlan)
-
-    system_prompt = """
-Eres un coach digital de objetivos.
-Tu tarea es convertir metas del usuario en un plan accionable, seguro y claro.
-
-Debes responder usando exactamente la estructura definida.
-"""
-
-    print("[LangGraph] Llamando a Gemini...\n")
-
-    result = structured_model.invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=state["prompt_text"]),
+    result = model.invoke([
+        SystemMessage(content="Eres un coach digital especializado en planificación de objetivos."),
+        HumanMessage(content=planner_prompt),
     ])
 
-    print("[LangGraph] Respuesta recibida de Gemini.")
-    return {"ai_result": result.model_dump()}
+    return {"ai_result": result}
 
 
-# -----------------------------
-# Construcción del grafo
-# -----------------------------
+def qa_node(state: GraphState):
+    payload = BackendRequest(**state["backend_payload"])
+
+    qa_prompt = f"""
+Responde la duda del usuario de forma útil, breve y clara.
+
+DATOS:
+{payload.model_dump_json(indent=2)}
+
+REGLAS:
+- Responde en español.
+- Si no hay suficiente contexto, dilo claramente.
+- response_type = "answer"
+- No inventes historial no proporcionado.
+"""
+
+    model = get_qa_model().with_structured_output(
+        CoachResponse.model_json_schema(),
+        method="json_schema",
+    )
+
+    result = model.invoke([
+        SystemMessage(content="Eres un asistente de seguimiento y preguntas sobre metas y planes."),
+        HumanMessage(content=qa_prompt),
+    ])
+
+    return {"ai_result": result}
+
+
+def fallback_node(state: GraphState):
+    payload = BackendRequest(**state["backend_payload"])
+
+    fallback_prompt = f"""
+La petición del usuario es ambigua o demasiado general.
+
+DATOS:
+{payload.model_dump_json(indent=2)}
+
+REGLAS:
+- Responde en español.
+- Explica qué información falta.
+- Haz máximo 3 preguntas útiles.
+- response_type = "fallback"
+"""
+
+    model = get_fallback_model().with_structured_output(
+        CoachResponse.model_json_schema(),
+        method="json_schema",
+    )
+
+    result = model.invoke([
+        SystemMessage(content="Eres un asistente que aclara peticiones ambiguas."),
+        HumanMessage(content=fallback_prompt),
+    ])
+
+    return {"ai_result": result}
+
+
+def consolidator_node(state: GraphState):
+    # En este MVP solo regresa lo que ya produjo el agente.
+    # Aquí luego puedes agregar logs, métricas o formato adicional.
+    return {"ai_result": state["ai_result"]}
+
+
+def route_to_agent(state: GraphState):
+    route = state["route"]
+    if route == "planner":
+        return "planner_node"
+    if route == "qa":
+        return "qa_node"
+    return "fallback_node"
+
+
 def build_graph():
-    graph_builder = StateGraph(GraphState)
+    builder = StateGraph(GraphState)
 
-    graph_builder.add_node("prepare_prompt", prepare_prompt)
-    graph_builder.add_node("call_gemini", call_gemini)
+    builder.add_node("router_node", router_node)
+    builder.add_node("planner_node", planner_node)
+    builder.add_node("qa_node", qa_node)
+    builder.add_node("fallback_node", fallback_node)
+    builder.add_node("consolidator_node", consolidator_node)
 
-    graph_builder.add_edge(START, "prepare_prompt")
-    graph_builder.add_edge("prepare_prompt", "call_gemini")
-    graph_builder.add_edge("call_gemini", END)
+    builder.add_edge(START, "router_node")
+    builder.add_conditional_edges(
+        "router_node",
+        route_to_agent,
+        {
+            "planner_node": "planner_node",
+            "qa_node": "qa_node",
+            "fallback_node": "fallback_node",
+        },
+    )
+    builder.add_edge("planner_node", "consolidator_node")
+    builder.add_edge("qa_node", "consolidator_node")
+    builder.add_edge("fallback_node", "consolidator_node")
+    builder.add_edge("consolidator_node", END)
 
-    return graph_builder.compile()
+    return builder.compile()

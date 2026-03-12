@@ -1,8 +1,10 @@
+# backend_simulator.py
 import json
 from graph_app import build_graph
 
 
 def main():
+    # Simula lo que enviaría el backend
     backend_payload = {
         "user_profile": {
             "name": "Victor",
@@ -24,20 +26,17 @@ def main():
         "user_message": "Hazme un plan de 8 semanas sin lesionarme."
     }
 
-    print("[Backend] Enviando payload al grafo...\n")
+    print("\n[Backend] Enviando payload al grafo IA...\n")
+    app = build_graph()
 
-    graph = build_graph()
-
-    result = graph.invoke({
+    final_state = app.invoke({
         "backend_payload": backend_payload,
-        "route": None,
-        "route_reason": None,
         "prompt_text": None,
         "ai_result": None,
     })
 
-    print("\n[Backend] Resultado final:\n")
-    print(json.dumps(result["ai_result"], ensure_ascii=False, indent=2))
+    print("\n[Backend] Respuesta final recibida del grafo:\n")
+    print(json.dumps(final_state["ai_result"], ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
