@@ -1,105 +1,122 @@
-# Smart-Life-Coach-AI
-Te dejo un **README limpio, profesional y listo para GitHub** para tu parte de IA. Está pensado para que cualquiera pueda clonar el repo, instalar dependencias y correr el demo del flujo **Backend → LangGraph → Gemini → Backend**.
+# Smart-Life-Coach-AI (LangGraph + Gemini Multi-Agent)
 
-Puedes copiarlo directo.
+Prototipo del componente de **Inteligencia Artificial** para el proyecto **Smart Life Coach**.
 
----
+Este módulo implementa un **grafo de estado con LangGraph** que permite enrutar solicitudes del usuario hacia distintos **agentes especializados**, utilizando modelos **Google Gemini** a través de la integración oficial `langchain-google-genai`.
 
-# AI Coach Graph (Gemini + LangGraph Demo)
+El objetivo es demostrar cómo un backend puede enviar información de usuario y metas a un sistema de IA capaz de:
 
-Demo de integración de **LangGraph + LangChain + Google Gemini** para un asistente personal de objetivos.
-
-Este módulo simula el flujo real de una aplicación full-stack donde:
-
-```
-Frontend / Backend
-        ↓
-     FastAPI
-        ↓
-     LangGraph
-        ↓
-   Google Gemini
-        ↓
-     LangGraph
-        ↓
-     Backend
-```
-
-El objetivo es demostrar cómo un backend puede enviar información del usuario a un **grafo de IA**, que genera un plan personalizado usando un modelo LLM.
+* clasificar la intención del usuario
+* seleccionar el agente adecuado
+* generar una respuesta estructurada
+* devolver el resultado al backend
 
 ---
 
-# Arquitectura
+# Arquitectura general
+
+El flujo del sistema sigue el siguiente pipeline:
+
+```
+Backend
+   ↓
+LangGraph State
+   ↓
+Router (clasificación de intención)
+   ↓
+[planner_agent | qa_agent | fallback_agent]
+   ↓
+Consolidator
+   ↓
+Backend response
+```
+
+---
+
+# Flujo completo del sistema
 
 ```
 backend_simulator.py
         │
         ▼
-   LangGraph State
+     LangGraph
         │
         ▼
-   prepare_prompt node
+      Router
         │
         ▼
-    call_gemini node
-        │
-        ▼
-      Gemini API
-        │
-        ▼
-   structured output
-        │
-        ▼
-   respuesta al backend
+  ┌───────────────┬─────────────┬──────────────┐
+  │               │             │              │
+planner_agent   qa_agent   fallback_agent
+  │               │             │
+  └───────────────┴─────────────┴──────────────┘
+                │
+                ▼
+           Consolidator
+                │
+                ▼
+            Backend
 ```
+
+---
+
+# Agentes del sistema
+
+| Agente             | Función                                         | Modelo         |
+| ------------------ | ----------------------------------------------- | -------------- |
+| **Router**         | Clasifica la intención del usuario              | gemini-3-flash |
+| **Planner Agent**  | Genera planes, estrategias y pasos para metas   | gemini-3-flash |
+| **QA Agent**       | Responde dudas o preguntas sobre metas o planes | gemini-3-flash |
+| **Fallback Agent** | Maneja peticiones ambiguas o incompletas        | gemini-3-flash |
+| **Consolidator**   | Estandariza la salida al backend                | N/A            |
 
 ---
 
 # Tecnologías usadas
 
-* **Python 3.10+**
-* **LangGraph**
-* **LangChain**
-* **Google Gemini API**
-* **Pydantic**
-* **dotenv**
+* Python 3.10+
+* LangGraph
+* LangChain Google Integration
+* Google Gemini (AI Studio API)
+* Pydantic
+* python-dotenv
 
 ---
 
 # Estructura del proyecto
 
 ```
-ai-coach-graph/
+AI-component/
 │
-├── backend_simulator.py     # Simula el backend enviando datos
-├── graph_app.py             # Grafo LangGraph que orquesta la IA
-├── schemas.py               # Modelos Pydantic de entrada y salida
-├── .env                     # API key
-└── README.md
+├── backend_simulator.py   # Simula el backend enviando datos al grafo
+├── graph_app.py           # Grafo LangGraph con router y agentes
+├── schemas.py             # Modelos Pydantic de entrada y salida
+├── .env                   # API key de Google
+├── README.md
 ```
 
 ---
 
 # Instalación
 
-Clona el repositorio:
+Clonar el repositorio:
 
-```bash
-git clone https://github.com/tu_usuario/ai-coach-graph.git
-cd ai-coach-graph
+```
+git clone https://github.com/tu_usuario/smart-life-coach-ai.git
+cd smart-life-coach-ai/AI-component
 ```
 
-Instala dependencias:
+Instalar dependencias:
 
-```bash
-pip install -U langgraph langchain langchain-google-genai python-dotenv
+```
+pip install -U langgraph langchain-google-genai python-dotenv pydantic
 ```
 
 ---
 
 # Configurar API Key
 
-Crea un archivo `.env` en la raíz del proyecto.
+Crear un archivo `.env` en la raíz del proyecto:
 
 ```
 GOOGLE_API_KEY=tu_api_key_aqui
@@ -111,28 +128,35 @@ Puedes obtener una API key en:
 
 ---
 
-# Ejecutar el demo
+# Ejecutar el prototipo
 
-Ejecuta:
+Desde la terminal:
 
-```bash
+```
 python backend_simulator.py
 ```
 
-Flujo que verás en consola:
+---
+
+# Salida esperada en consola
 
 ```
-[Backend] Enviando payload al grafo IA...
+[Backend] Enviando payload al grafo...
 
-[LangGraph] Nodo prepare_prompt ejecutado.
-[LangGraph] Llamando a Gemini...
+[Router] route=planner | reason=El usuario solicita un plan
 
-[LangGraph] Respuesta recibida de Gemini.
+[Planner] Generando plan con Gemini...
 
-[Backend] Respuesta final recibida del grafo:
+[Backend] Resultado final:
+
 {
-   "plan_title": "...",
-   "milestones": ...
+  "response_type": "plan",
+  "plan_title": "Plan para correr 5K en 8 semanas",
+  "summary": "...",
+  "milestones": [...],
+  "weekly_schedule": [...],
+  "risks": [...],
+  "next_actions": [...]
 }
 ```
 
@@ -140,9 +164,7 @@ Flujo que verás en consola:
 
 # Ejemplo de input del backend
 
-El backend envía un objeto JSON al grafo:
-
-```json
+```
 {
   "user_profile": {
     "name": "Victor",
@@ -163,16 +185,15 @@ El backend envía un objeto JSON al grafo:
 
 # Ejemplo de output generado
 
-La IA devuelve un plan estructurado:
-
-```json
+```
 {
-  "plan_title": "Plan 5K en 8 semanas",
-  "summary": "Programa progresivo para correr 5 km",
+  "response_type": "plan",
+  "plan_title": "Plan para correr 5K en 8 semanas",
+  "summary": "Programa progresivo para mejorar resistencia",
   "milestones": [
     {
       "week": 2,
-      "target": "correr 10 minutos continuos"
+      "target": "Correr 10 minutos continuos"
     }
   ],
   "weekly_schedule": [
@@ -186,64 +207,58 @@ La IA devuelve un plan estructurado:
         }
       ]
     }
-  ],
-  "risks": [
-    {
-      "risk": "dolor de rodilla",
-      "mitigation": "reducir intensidad"
-    }
-  ],
-  "next_actions": [
-    "Confirmar acceso a pista"
   ]
 }
 ```
 
 ---
 
-# Cómo funciona el grafo
+# Diferencias con la versión anterior
 
-LangGraph usa un **StateGraph** donde cada nodo procesa el estado compartido.
+Versión anterior:
 
 ```
-StateGraph
-   │
-   ├── prepare_prompt
-   │
-   └── call_gemini
+Backend → LangGraph → Gemini → Backend
 ```
 
-### Nodo 1
+Nueva versión:
 
-Prepara el prompt a partir de los datos enviados por el backend.
+```
+Backend → Router → Agente especializado → Consolidator → Backend
+```
 
-### Nodo 2
+Esto permite:
 
-Llama al modelo Gemini usando LangChain y genera la respuesta estructurada.
+* mayor modularidad
+* mejor control del contexto
+* agentes especializados
+* arquitectura escalable
 
 ---
 
-# Ventajas de este enfoque
+# Ventajas de esta arquitectura
 
 ✔ separación clara entre backend e IA
-✔ fácil escalar a agentes más complejos
-✔ salida estructurada validada con Pydantic
-✔ integración simple con FastAPI
+✔ selección dinámica de agente según intención
+✔ respuestas estructuradas con Pydantic
+✔ integración directa con Google AI Studio
+✔ base para sistemas multi-agente
 
 ---
 
 # Próximos pasos
 
-Este demo puede evolucionar hacia:
+Posibles mejoras del sistema:
 
 * integración con **FastAPI**
-* memoria de usuario con **Supabase**
-* almacenamiento de planes
-* soporte **voz / imagen**
-* agentes más complejos con **LangGraph**
+* memoria de usuario
+* historial de conversaciones
+* embeddings + base vectorial
+* agentes adicionales (nutrición, estudio, deporte)
+* soporte multimodal (imagen, audio)
 
 ---
 
 # Licencia
 
-MIT License
+MIT Lice
