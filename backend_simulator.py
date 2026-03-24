@@ -1,28 +1,29 @@
 import json
 from graph_app import build_graph
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import StreamingResponse
+from schemas import Message
 
 
-def main():
-    backend_payload = {
-        "user_profile": {
-            "name": "Victor",
-            "language": "es",
-            "timezone": "America/Mexico_City",
-            "constraints": ["30 min al día", "sin gimnasio"]
-        },
-        "goal": {
-            "title": "Correr 5K",
-            "category": "deportivo",
-            "deadline": "2026-05-30",
-            "priority": "alta"
-        },
-        "current_state": {
-            "level": "principiante",
-            "habits": ["camina 2 veces por semana"],
-            "issues": ["molestia leve en rodilla"]
-        },
-        "user_message": "Hazme un plan de 8 semanas sin lesionarme."
-    }
+def main(backend_payload):
+    # backend_payload = {
+    #     "id": "session-001",
+    #     "trigger": "new_message",
+    #     "user_name": "Victor",
+    #     "age": 22,
+    #     "messages": [
+    #         {
+    #             "id": "msg-001",
+    #             "role": "user",
+    #             "parts": [
+    #                 {
+    #                     "type": "text",
+    #                     "text": "Hola coach quiero un plan de trabajo para aprender a hacer un full stack para mi clase de ingeniería de software. Somos 5 estudiantes con nociones básicas de programación. ¿Qué necesitamos aprender?"
+    #                 }
+    #             ]
+    #         }
+    #     ]
+    # }
 
     print("[Backend] Enviando payload al grafo...\n")
 
@@ -32,13 +33,14 @@ def main():
         "backend_payload": backend_payload,
         "route": None,
         "route_reason": None,
-        "prompt_text": None,
+        "last_user_message": None,
         "ai_result": None,
     })
 
     print("\n[Backend] Resultado final:\n")
-    print(json.dumps(result["ai_result"], ensure_ascii=False, indent=2))
+    return(json.dumps(result["ai_result"], ensure_ascii=False, indent=2))
 
-
-if __name__ == "__main__":
-    main()
+app = FastAPI()
+@app.post("/Chat")
+async def generar_respuesta(texto:Message):
+    return(main(texto))

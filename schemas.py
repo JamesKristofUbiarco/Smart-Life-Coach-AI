@@ -2,37 +2,35 @@ from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
 
 
-class Goal(BaseModel):
-    title: str
-    category: str
-    deadline: str
-    priority: str
+# ===== INPUT DESDE BACKEND =====
+
+class MessagePart(BaseModel):
+    type: str = "text"
+    text: str
 
 
-class UserProfile(BaseModel):
-    name: str
-    language: str = "es"
-    timezone: str = "America/Mexico_City"
-    constraints: List[str] = Field(default_factory=list)
+class Message(BaseModel):
+    id: str
+    role: Literal["user", "assistant", "system"]
+    parts: List[MessagePart]
 
 
-class CurrentState(BaseModel):
-    level: str
-    habits: List[str] = Field(default_factory=list)
-    issues: List[str] = Field(default_factory=list)
+class ChatPayload(BaseModel):
+    id: str
+    messages: List[Message]
+    trigger: str
+    user_name: Optional[str] = None
+    age: Optional[int] = None
 
 
-class BackendRequest(BaseModel):
-    user_profile: UserProfile
-    goal: Goal
-    current_state: CurrentState
-    user_message: str
-
+# ===== OUTPUT DEL ROUTER =====
 
 class RouterDecision(BaseModel):
     route: Literal["planner", "qa", "fallback"]
     reason: str
 
+
+# ===== OUTPUT DEL COACH =====
 
 class SessionItem(BaseModel):
     day: str
@@ -57,6 +55,7 @@ class RiskItem(BaseModel):
 
 class CoachResponse(BaseModel):
     response_type: Literal["plan", "answer", "fallback"]
+    message_for_user: str
     plan_title: Optional[str] = None
     summary: str
     milestones: List[Milestone] = Field(default_factory=list)
