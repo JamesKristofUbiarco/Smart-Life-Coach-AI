@@ -2,11 +2,10 @@ import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from graph_app import build_graph
+from graph_app import process_chat
 from schemas import ChatPayload
 
 app = FastAPI()
-graph = build_graph()
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,25 +25,19 @@ async def root():
 @app.post("/chat")
 async def generar_respuesta(payload: ChatPayload):
     try:
-        print("[Backend] Enviando payload al grafo...\n")
+        print("[Backend] Procesando chat con Agente ReAct...\n")
 
-        result = graph.invoke({
-            "backend_payload": payload.model_dump(),
-            "route": None,
-            "route_reason": None,
-            "last_user_message": None,
-            "ai_result": None,
-        })
+        coach_response_dict = process_chat(payload.model_dump())
 
-        print("\n[Backend] Resultado final:\n")
-        print(json.dumps(result["ai_result"], ensure_ascii=False, indent=2))
-
+        print("\n[Backend] Resultado final enviado al backend principal:\n")
+        
         return {
             "status": "success",
             "session_id": payload.id,
-            "route_used": result["route"],
-            "route_reason": result["route_reason"],
-            "coach_response": result["ai_result"],
+            "coach_response": coach_response_dict,
+            # Campos legacy para mantener compatibilidad
+            "route_used": "agent",
+            "route_reason": "agent process",
         }
 
     except Exception as e:
