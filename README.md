@@ -6,10 +6,33 @@ Este módulo implementa un **grafo de estado con LangGraph** que permite enrutar
 
 El objetivo es demostrar cómo un backend puede enviar información de usuario y metas a un sistema de IA capaz de:
 
-* clasificar la intención del usuario
-* seleccionar el agente adecuado
-* generar una respuesta estructurada
-* devolver el resultado al backend
+- clasificar la intención del usuario
+- seleccionar el agente adecuado
+- generar una respuesta estructurada
+- devolver el resultado al backend
+
+## .env
+
+1. Copiar el archivo .env.template en un .env
+2. La GOOGLE_API_KEY= se genera en aistudio.google.com
+
+## Correr en entorno virtual con uv y uvicorn
+
+```bash
+uv venv .venv --python 3.13.5
+```
+
+```bash
+source .venv/bin/activate
+```
+
+```bash
+uv pip install -r requirements.txt
+```
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+```
 
 ---
 
@@ -74,12 +97,12 @@ planner_agent   qa_agent   fallback_agent
 
 # Tecnologías usadas
 
-* Python 3.10+
-* LangGraph
-* LangChain Google Integration
-* Google Gemini (AI Studio API)
-* Pydantic
-* python-dotenv
+- Python 3.10+
+- LangGraph
+- LangChain Google Integration
+- Google Gemini (AI Studio API)
+- Pydantic
+- python-dotenv
 
 ---
 
@@ -229,10 +252,10 @@ Backend → Router → Agente especializado → Consolidator → Backend
 
 Esto permite:
 
-* mayor modularidad
-* mejor control del contexto
-* agentes especializados
-* arquitectura escalable
+- mayor modularidad
+- mejor control del contexto
+- agentes especializados
+- arquitectura escalable
 
 ---
 
@@ -250,12 +273,12 @@ Esto permite:
 
 Posibles mejoras del sistema:
 
-* integración con **FastAPI**
-* memoria de usuario
-* historial de conversaciones
-* embeddings + base vectorial
-* agentes adicionales (nutrición, estudio, deporte)
-* soporte multimodal (imagen, audio)
+- integración con **FastAPI**
+- memoria de usuario
+- historial de conversaciones
+- embeddings + base vectorial
+- agentes adicionales (nutrición, estudio, deporte)
+- soporte multimodal (imagen, audio)
 
 ---
 
