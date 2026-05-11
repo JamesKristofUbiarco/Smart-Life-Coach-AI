@@ -1,257 +1,85 @@
-from typing import TypedDict, Optional
-
+import os
+from typing import TypedDict, Optional, List
 from dotenv import load_dotenv
-from langgraph.graph import StateGraph, START, END
-from langchain.messages import SystemMessage, HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 
-from schemas import ChatPayload, RouterDecision, CoachResponse
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.prebuilt import create_react_agent
+
+from schemas import ChatPayload
+from tools import get_tools
 
 load_dotenv()
 
-
-class GraphState(TypedDict):
-    backend_payload: dict
-    route: Optional[str]
-    route_reason: Optional[str]
-    last_user_message: Optional[str]
-    ai_result: Optional[dict]
-
-
-def get_router_model():
+def get_model():
     return ChatGoogleGenerativeAI(
         model="gemini-3-flash-preview",
-        temperature=1.0,
+        temperature=0.7,
         max_retries=2,
     )
 
-
-def get_planner_model():
-    return ChatGoogleGenerativeAI(
-        model="gemini-3-flash-preview",
-        temperature=1.0,
-        max_retries=2,
-        thinking_level="low",
-    )
-
-
-def get_qa_model():
-    return ChatGoogleGenerativeAI(
-        model="gemini-3-flash-preview",
-        temperature=1.0,
-        max_retries=2,
-    )
-
-
-def get_fallback_model():
-    return ChatGoogleGenerativeAI(
-        model="gemini-3-flash-preview",
-        temperature=1.0,
-        max_retries=2,
-    )
-
-
-def extract_last_user_message(state: GraphState):
-    payload = ChatPayload(**state["backend_payload"])
-    user_messages = [m for m in payload.messages if m.role == "user"]
-
-    if not user_messages:
-        raise ValueError("No hay mensajes del usuario en el payload.")
-
-    last_msg = user_messages[-1]
-    text_parts = [p.text for p in last_msg.parts if p.type == "text"]
-    joined_text = "\n".join(text_parts).strip()
-
-    print(f"[Extractor] Último mensaje usuario: {joined_text}")
-    return {"last_user_message": joined_text}
-
-
-def router_node(state: GraphState):
-    payload = ChatPayload(**state["backend_payload"])
-
-    router_prompt = f"""
-Clasifica la siguiente petición en UNA de estas rutas:
-- planner: si el usuario pide un plan, estrategia, roadmap, rutina o pasos para lograr una meta
-- qa: si el usuario hace una duda puntual, seguimiento o aclaración
-- fallback: si la petición es ambigua, demasiado general o no encaja
-
-Devuelve solo la estructura solicitada.
-
-SESIÓN:
-- session_id: {payload.id}
-- trigger: {payload.trigger}
-- user_name: {payload.user_name}
-- age: {payload.age}
-
-ÚLTIMO MENSAJE:
-{state["last_user_message"]}
-"""
-
-    model = get_router_model().with_structured_output(
-        RouterDecision.model_json_schema(),
-        method="json_schema",
-    )
-
-    result = model.invoke([
-        SystemMessage(content="Eres un router de intenciones para un asistente personal."),
-        HumanMessage(content=router_prompt),
-    ])
-
-    print(f"[Router] route={result['route']} | reason={result['reason']}")
+def process_chat(payload_dict: dict) -> dict:
+    payload = ChatPayload(**payload_dict)
+    
+    # Extraer mensajes e historial
+    langchain_messages = []
+    
+    # 1. System Prompt basado en Ajustes
+    ai_settings = payload.ai_settings or {}
+    coach_name = ai_settings.get("nombre", "Smart Life Coach")
+    coach_tone = ai_settings.get("tono", "Profesional y motivador")
+    
+    system_prompt = f"""
+    Eres {coach_name}, un asistente personal inteligente y coach de vida.
+    Tono: {coach_tone}
+    
+    Tu objetivo es ayudar al usuario a alcanzar sus metas mediante la creación de planes y tareas.
+    Tus herramientas te permiten:
+    - Consultar los planes actuales del usuario.
+    - Crear un plan nuevo (para metas grandes).
+    - Crear tareas dentro de un plan (pasos concretos).
+    
+    REGLAS:
+    1. Si el usuario te pide crear un plan o tarea, USA LAS HERRAMIENTAS correspondientes. NO simules la creación, hazla real.
+    2. Cuando uses una herramienta, coméntale al usuario que ya la ejecutaste.
+    3. Si el usuario pregunta por sus planes, usa la herramienta para consultarlos.
+    4. Responde de manera clara y natural, manteniendo el formato markdown si es necesario.
+    """
+    
+    langchain_messages.append(SystemMessage(content=system_prompt))
+    
+    # 2. Convertir historial
+    for msg in payload.messages:
+        text = " ".join([p.text for p in msg.parts if p.type == "text" and p.text is not None])
+        if msg.role == "user":
+            langchain_messages.append(HumanMessage(content=text))
+        else:
+            langchain_messages.append(AIMessage(content=text))
+            
+    # Configurar herramientas y agente
+    tools = get_tools(payload.token) if payload.token else []
+    model = get_model()
+    
+    # Crear agente ReAct
+    agent = create_react_agent(model, tools)
+    
+    # Ejecutar agente
+    print(f"\n[Agent] Invocando agente con {len(langchain_messages)} mensajes...")
+    result = agent.invoke({"messages": langchain_messages})
+    
+    # Extraer la última respuesta del agente
+    final_content = result["messages"][-1].content
+    
+    if isinstance(final_content, list):
+        text_blocks = [block.get("text", "") for block in final_content if isinstance(block, dict) and block.get("type") == "text"]
+        final_message = "\n".join(text_blocks)
+    else:
+        final_message = str(final_content)
+        
+    print(f"[Agent] Respuesta generada:\n{final_message[:100]}...\n")
+    
     return {
-        "route": result["route"],
-        "route_reason": result["reason"],
+        "summary": final_message,
+        "response_type": "answer",
+        "message_for_user": final_message,
     }
-
-
-def planner_node(state: GraphState):
-    payload = ChatPayload(**state["backend_payload"])
-
-    planner_prompt = f"""
-Genera un plan accionable, realista y seguro para este usuario.
-
-DATOS:
-- user_name: {payload.user_name}
-- age: {payload.age}
-- session_id: {payload.id}
-- trigger: {payload.trigger}
-
-MENSAJE DEL USUARIO:
-{state["last_user_message"]}
-
-REGLAS:
-- Responde en español.
-- Sé concreto.
-- Si el usuario pide aprender algo, divide por fases.
-- Crea hitos, agenda semanal, riesgos y siguientes acciones.
-- response_type = "plan"
-- message_for_user debe ser natural, claro y útil.
-"""
-
-    model = get_planner_model().with_structured_output(
-        CoachResponse.model_json_schema(),
-        method="json_schema",
-    )
-
-    result = model.invoke([
-        SystemMessage(content="Eres un coach digital especializado en planificación de objetivos."),
-        HumanMessage(content=planner_prompt),
-    ])
-
-    print("[Planner] Plan generado.")
-    return {"ai_result": result}
-
-
-def qa_node(state: GraphState):
-    payload = ChatPayload(**state["backend_payload"])
-
-    qa_prompt = f"""
-Responde la duda del usuario de forma útil, breve y clara.
-
-DATOS:
-- user_name: {payload.user_name}
-- age: {payload.age}
-- session_id: {payload.id}
-- trigger: {payload.trigger}
-
-MENSAJE DEL USUARIO:
-{state["last_user_message"]}
-
-REGLAS:
-- Responde en español.
-- response_type = "answer"
-- message_for_user debe responder directamente al usuario.
-- No inventes contexto no proporcionado.
-"""
-
-    model = get_qa_model().with_structured_output(
-        CoachResponse.model_json_schema(),
-        method="json_schema",
-    )
-
-    result = model.invoke([
-        SystemMessage(content="Eres un asistente de seguimiento y preguntas sobre metas y planes."),
-        HumanMessage(content=qa_prompt),
-    ])
-
-    print("[QA] Respuesta generada.")
-    return {"ai_result": result}
-
-
-def fallback_node(state: GraphState):
-    payload = ChatPayload(**state["backend_payload"])
-
-    fallback_prompt = f"""
-La petición del usuario es ambigua o demasiado general.
-
-DATOS:
-- user_name: {payload.user_name}
-- age: {payload.age}
-- session_id: {payload.id}
-- trigger: {payload.trigger}
-
-MENSAJE DEL USUARIO:
-{state["last_user_message"]}
-
-REGLAS:
-- Responde en español.
-- Explica qué información falta.
-- Haz máximo 3 preguntas útiles.
-- response_type = "fallback"
-- message_for_user debe sonar natural.
-"""
-
-    model = get_fallback_model().with_structured_output(
-        CoachResponse.model_json_schema(),
-        method="json_schema",
-    )
-
-    result = model.invoke([
-        SystemMessage(content="Eres un asistente que aclara peticiones ambiguas."),
-        HumanMessage(content=fallback_prompt),
-    ])
-
-    print("[Fallback] Solicitud de aclaración generada.")
-    return {"ai_result": result}
-
-
-def consolidator_node(state: GraphState):
-    return {"ai_result": state["ai_result"]}
-
-
-def route_to_agent(state: GraphState):
-    route = state["route"]
-    if route == "planner":
-        return "planner_node"
-    if route == "qa":
-        return "qa_node"
-    return "fallback_node"
-
-
-def build_graph():
-    builder = StateGraph(GraphState)
-
-    builder.add_node("extract_last_user_message", extract_last_user_message)
-    builder.add_node("router_node", router_node)
-    builder.add_node("planner_node", planner_node)
-    builder.add_node("qa_node", qa_node)
-    builder.add_node("fallback_node", fallback_node)
-    builder.add_node("consolidator_node", consolidator_node)
-
-    builder.add_edge(START, "extract_last_user_message")
-    builder.add_edge("extract_last_user_message", "router_node")
-    builder.add_conditional_edges(
-        "router_node",
-        route_to_agent,
-        {
-            "planner_node": "planner_node",
-            "qa_node": "qa_node",
-            "fallback_node": "fallback_node",
-        },
-    )
-    builder.add_edge("planner_node", "consolidator_node")
-    builder.add_edge("qa_node", "consolidator_node")
-    builder.add_edge("fallback_node", "consolidator_node")
-    builder.add_edge("consolidator_node", END)
-
-    return builder.compile()

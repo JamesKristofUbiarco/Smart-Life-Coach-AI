@@ -6,7 +6,7 @@ from typing import Literal, List, Optional
 
 class MessagePart(BaseModel):
     type: str = "text"
-    text: str
+    text: Optional[str] = None
 
 
 class Message(BaseModel):
@@ -21,6 +21,8 @@ class ChatPayload(BaseModel):
     trigger: str
     user_name: Optional[str] = None
     age: Optional[int] = None
+    token: Optional[str] = None
+    ai_settings: Optional[dict] = None
 
 
 # ===== OUTPUT DEL ROUTER =====
